@@ -1,0 +1,13 @@
+# Dataset folders
+CICIOT23/
+data/
+
+# Model files
+*.pkl
+
+# Archives
+*.zip
+
+# Python cache
+__pycache__/
+*.pyc
