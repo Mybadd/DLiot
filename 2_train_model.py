@@ -37,9 +37,14 @@ def train_anomaly_detector():
 
         model.fit(X_train)
 
+        # Save trained model
         joblib.dump(model, config.MODEL_SAVE_PATH)
 
+        # Save training feature list (important for unseen datasets)
+        joblib.dump(X_train.columns.tolist(), "features.pkl")
+
         print(f"[+] Model successfully trained and saved to: {config.MODEL_SAVE_PATH}")
+        print("[+] Feature list saved to: features.pkl")
 
     except FileNotFoundError:
         print("[!] Error: Clean data file not found. Run 1_prepare_data.py first.")
