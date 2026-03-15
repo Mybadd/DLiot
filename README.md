@@ -23,6 +23,15 @@ To ensure the system remains lightweight enough to run on an IoT Edge Gateway, s
 
 ---
 
+## Key Technical Features
+Dataset Agnostic: Features a custom dataset_adapter.py that maps varying CSV headers (CICIOT23, etc.) to a standardized AI feature set.
+
+Memory Optimized: Implements Chunked Data Evaluation to process over 1.1 Million rows of network traffic without crashing system RAM.
+
+Fast Inference: Uses Isolation Forest, an unsupervised learning algorithm that is significantly faster than Deep Learning for real-time Edge deployment.
+
+Live UI: Interactive Streamlit Dashboard for real-time traffic visualization and security alerts.
+
 ## 🚀 Pipeline & Structure
 
 The project is structured into functional, numbered steps from data processing to live deployment.
@@ -43,6 +52,4 @@ We prove the AI works using two specific methodologies:
 
 ---
 
-## 🏗️ Getting Started
 
-*(Instructions for cloning, installing requirements, and running the pipeline will be added here once the codebase is generated).*
