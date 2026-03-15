@@ -2,50 +2,35 @@ import pandas as pd
 import joblib
 import config
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+from dataset_adapter import preprocess_dataset
 
 def evaluate_model():
-
-    print("[*] Loading dataset for evaluation...")
-
-    df = pd.read_csv(config.CLEAN_DATA_PATH)
-
-    if config.LABEL_COLUMN not in df.columns:
-        print("[!] Label column not found in dataset.")
+    print(f"[*] Loading model and preparing for chunked evaluation...")
+    try:
+        model = joblib.load(config.MODEL_SAVE_PATH)
+    except:
+        print("[!] Model not found.")
         return
 
-    X = df.drop(columns=[config.LABEL_COLUMN])
-    y_true = df[config.LABEL_COLUMN]
+    all_preds = []
+    all_true = []
+    chunk_size = 100000 
 
-    print("[*] Loading trained model...")
-    model = joblib.load(config.MODEL_SAVE_PATH)
+    # Process dataset in small chunks to prevent MemoryError
+    for chunk in pd.read_csv(config.TEST_DATA_PATH, chunksize=chunk_size):
+        X = preprocess_dataset(chunk)
+        raw_preds = model.predict(X)
+        
+        all_preds.extend([1 if p == -1 else 0 for p in raw_preds])
+        all_true.extend([1 if label != config.NORMAL_LABEL else 0 for label in chunk[config.LABEL_COLUMN]])
+        print(f"[*] Processed {len(all_preds)} rows...")
 
-    print("[*] Running predictions...")
-
-    preds = model.predict(X)
-
-    # Convert Isolation Forest output
-    preds = [1 if p == -1 else 0 for p in preds]
-
-    # Convert labels
-    y_true = [1 if label != config.NORMAL_LABEL else 0 for label in y_true]
-
-    print("\n===== Evaluation Results =====")
-
-    acc = accuracy_score(y_true, preds)
-    print(f"Accuracy: {acc:.4f}")
-
-    cm = confusion_matrix(y_true, preds)
+    print("\n===== Final Evaluation Results =====")
+    print(f"Accuracy: {accuracy_score(all_true, all_preds):.4f}")
     print("\nConfusion Matrix:")
-    print(cm)
-
+    print(confusion_matrix(all_true, all_preds))
     print("\nClassification Report:")
-    print(classification_report(y_true, preds))
-
-    # False Positive Rate
-    tn, fp, fn, tp = cm.ravel()
-    fpr = fp / (fp + tn)
-
-    print(f"\nFalse Positive Rate: {fpr:.4f}")
+    print(classification_report(all_true, all_preds, target_names=["Normal", "Attack"]))
 
 if __name__ == "__main__":
-    evaluate_model()
+    evaluate_model()    

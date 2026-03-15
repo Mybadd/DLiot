@@ -1,31 +1,22 @@
 import pandas as pd
 import joblib
+import config
 
 def preprocess_dataset(df):
+    try:
+        expected_features = joblib.load("features.pkl")
+    except:
+        expected_features = config.SELECTED_FEATURES
 
-    # Load training features
-    features = joblib.load("features.pkl")
+    # No complex mapping needed if config.py matches the CSV exactly
+    # Just ensure we handle duplicates and types
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    
+    df_final = pd.DataFrame(index=df.index)
+    for f in expected_features:
+        if f in df.columns:
+            df_final[f] = df[f].astype('float32')
+        else:
+            df_final[f] = 0.0 # This should be rare now!
 
-    # Normalize column names
-    df.columns = df.columns.str.lower()
-
-    # Example mapping (optional)
-    column_mapping = {
-        "duration": "flow_duration",
-        "avg": "fwd_pkt_len_mean",
-        "max": "fwd_pkt_len_max",
-        "min": "fwd_pkt_len_min",
-        "header_length": "totlen_fwd_pkts"
-    }
-
-    df = df.rename(columns=column_mapping)
-
-    # Create missing columns
-    for f in features:
-        if f not in df.columns:
-            df[f] = 0
-
-    # Keep only model features and enforce correct order
-    df = df[features]
-
-    return df
+    return df_final[expected_features]

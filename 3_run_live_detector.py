@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import config
 import os
+import datetime
 
 class EdgeDetector:
     def __init__(self):
@@ -52,6 +53,11 @@ class EdgeDetector:
         except Exception as e:
             print(f"[!] Error inspecting flow: {e}")
             return None
+        return {
+    "time": datetime.datetime.now(),
+    "is_anomalous": is_anomaly,
+    "score": score
+        }
 
 if __name__ == "__main__":
     print("[*] 3_run_live_detector.py is a module. Please use 4a_replay_simulator.py or 4b_active_simulator.py to test it.")
@@ -63,3 +69,4 @@ if __name__ == "__main__":
         fake_flow = {col: 0.5 for col in config.SELECTED_FEATURES}
         result = detector.inspect_flow(fake_flow)
         print(f"[*] Sanity Check Result: {result}")
+    
