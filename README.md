@@ -1,55 +1,65 @@
-# Lightweight IoT Edge Intrusion Detection System (IDS)
+# 🛡️ Deep Learning IoT Edge IDS (CICIOT23)
 
-This project implements a lightweight and computationally efficient Intrusion Detection System (IDS) specifically designed to run on resource-constrained Edge gateways (e.g., Raspberry Pi, local routers). It protects IoT environments by detecting zero-day attacks and anomalies without relying on cloud infrastructure.
-
-## 🎯 Project Objectives
-*   **Edge-Native Architecture:** Compute heavy tasks (training) are done offline. The edge device only runs a highly compressed inference model.
-*   **Zero-Day Detection:** Uses Anomaly Detection to catch unknown attacks rather than relying on signature databases.
-*   **Dual Simulation Testing:** Proves the model works using both dataset replays (Mirai, DDoS) and active live-network simulations.
+This project implements a **Deep Learning-based Anomaly Detection System** designed for IoT Edge Gateways. By utilizing an unsupervised **Autoencoder architecture**, the system learns the "mathematical DNA" of normal network traffic and can detect malicious bursts (DDoS, Mirai, Brute Force) without needing prior knowledge of attack signatures.
 
 ---
 
-## 🛠️ Technology Stack & Architecture Choices
+### 🎯 Project Objectives
+* **Deep Learning at the Edge:** Uses a compressed PyTorch Autoencoder (only ~50KB) that performs real-time inference with minimal CPU overhead.
+* **Zero-Day Readiness:** Detects anomalies by calculating **Reconstruction Error**; any traffic that the model cannot "rebuild" is flagged as a potential new threat.
+* **High-Fidelity Performance:** Achieved a **93% Detection Accuracy** on the CICIOT23 dataset (1.1 million+ samples).
 
-To ensure the system remains lightweight enough to run on an IoT Edge Gateway, specific tools were chosen over enterprise-grade alternatives.
+---
 
-| Tech Stack Used | Enterprise Alternative | Reason for Choosing the Lightweight Stack |
+### 🛠️ Technology Stack & Architecture
+
+| Component | Choice | Reason |
 | :--- | :--- | :--- |
-| **Python 3.x** | C++ / Rust | Python offers the vast array of Machine Learning libraries needed (Scikit-Learn). While C++ is faster for inference, Python is fast enough for gateway-level routing and is much easier to develop and test locally. |
-| **Scikit-Learn (Isolation Forest)** | Deep Autoencoders / TensorFlow | Deep learning models with "attention" mechanisms are massive. Scikit-Learn's anomaly detection algorithms calculate mathematical outliers with minimal CPU/RAM usage, perfect for an edge device. |
-| **CICFlowMeter-Python (or PyShark)** | Zeek (formerly Bro) | Zeek is powerful but heavy to install and configure. A Python-based flow meter natively generates the statistical summaries required for ML natively without needing external engine processes. |
-| **Pickle / Joblib (Model Save)** | Dockerized Microservices | Running fully isolated Docker containers for a single model inference on a 1GB RAM edge device consumes too much overhead. Loading a tiny `.pkl` file directly into memory is faster. |
-| **Local File Data Feeds (CSV)** | Kafka / ELK Stack | A full data pipeline (Kafka) is massive overkill for a local home network. Reading and routing directly from the local traffic listener is instant and resource-free. |
+| **Framework** | **PyTorch** | Allows for precise control over the neural network bottleneck, essential for forcing the model to learn only "normal" features. |
+| **Architecture** | **Deep Autoencoder** | A 5-layer symmetric network (12 → 6 → 3 → 6 → 12) that compresses 9 network features into a latent space. |
+| **Scaling** | **RobustScaler** | Specifically chosen to handle extreme outliers and high-frequency "Rate" spikes common in IoT traffic. |
+| **Dashboard** | **Streamlit** | Provides a professional, web-based UI for real-time monitoring and anomaly score visualization. |
 
 ---
 
-## Key Technical Features
-Dataset Agnostic: Features a custom dataset_adapter.py that maps varying CSV headers (CICIOT23, etc.) to a standardized AI feature set.
+### 🚀 How to Run & Test (Step-by-Step)
+Data Preparation & Training
+Step 1: Run python 1_prepare_data.py
 
-Memory Optimized: Implements Chunked Data Evaluation to process over 1.1 Million rows of network traffic without crashing system RAM.
+Cleans the 1.5GB CICIOT23 dataset and extracts the 9 core features (IAT, Rate, Flags, etc.).
 
-Fast Inference: Uses Isolation Forest, an unsupervised learning algorithm that is significantly faster than Deep Learning for real-time Edge deployment.
+Step 2: Run python 2_train_model.py
 
-Live UI: Interactive Streamlit Dashboard for real-time traffic visualization and security alerts.
+Trains the Autoencoder on Normal Traffic only. Saves model weights and the detection threshold to the models/ folder.
 
-## 🚀 Pipeline & Structure
+3. Verification (The Final Exam)
+Step 3: Run python 5_evaluate_model.py
 
-The project is structured into functional, numbered steps from data processing to live deployment.
+Tests the model against 1.1 million rows of mixed traffic.
 
-### 1. Data Processing Tools
-*   `1_prepare_data.py`: Loads the raw IoT dataset (e.g., CICIoT2023 or Bot-IoT), cleans the data, and selects only the necessary network flow features.
+Expected Result: ~93% Accuracy and ~0.93 Attack Recall.
 
-### 2. Machine Learning Tools
-*   `2_train_model.py`: Takes the cleaned "normal" data and trains the Anomaly Detection model. Saves the trained model to disk.
+4. Live Demo (Simulating a Hacker)
+To see the system working in real-time, open two separate terminal windows:
 
-### 3. The Core Engine
-*   `3_run_live_detector.py`: The deployment engine. It loads the saved AI model and acts as a gateway function, taking incoming network flow features and instantly outputting an anomaly score and alert threshold.
+Terminal 1 (The Guard): ```bash
+python 3_run_live_detector.py
 
-### 4. Testing & Dual-Simulation
-We prove the AI works using two specific methodologies:
-*   `4a_replay_simulator.py`: **(Dataset Replay)** Safely tests the model by reading the testing portion of our original dataset row-by-row. This proves the math works against advanced botnets like Mirai.
-*   `4b_active_simulator.py`: **(Live Network Simulation)** Listens to the local machine's network card and runs live (but harmless) DDoS floods or Port Scans via `localhost` to catch active threats in real-time.
+*Monitors the live stream and logs attacks to `detection_log.csv`.*
 
----
+Terminal 2 (The Simulator): ```bash
+python 4a_replay_simulator.py  # To replay REAL dataset attacks
 
+OR
+python 4b_active_simulator.py  # To launch a MANUAL synthetic burst
+#### **1. Environment Setup**
+Ensure you have the required libraries installed:
+```bash
+pip install torch pandas numpy scikit-learn streamlit joblib
 
+📈 Key Technical Features
+Bottleneck Compression: By squeezing features into a 3-neuron latent space, we prevent the model from "memorizing" noise, forcing it to learn the true patterns of benign traffic.
+
+Percentile-Based Calibration: The detection threshold is dynamically set at the 75th percentile of training error, optimizing the balance between False Positives and Security Recall.
+
+Forensic Logging: Every detected attack is timestamped and saved with its specific Anomaly Score for later security auditing.

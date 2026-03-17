@@ -1,22 +1,32 @@
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import RobustScaler
 import joblib
+import os
 import config
 
-def preprocess_dataset(df):
-    try:
-        expected_features = joblib.load("features.pkl")
-    except:
-        expected_features = config.SELECTED_FEATURES
-
-    # No complex mapping needed if config.py matches the CSV exactly
-    # Just ensure we handle duplicates and types
-    df = df.loc[:, ~df.columns.duplicated()].copy()
+def preprocess_dataset(df, is_training=False):
+    # 1. Select only features we want
+    X = df[config.SELECTED_FEATURES].copy()
     
-    df_final = pd.DataFrame(index=df.index)
-    for f in expected_features:
-        if f in df.columns:
-            df_final[f] = df[f].astype('float32')
-        else:
-            df_final[f] = 0.0 # This should be rare now!
-
-    return df_final[expected_features]
+    # 2. Critical: Handle Infinities and NaNs from the 'Rate' features
+    X = X.replace([np.inf, -np.inf], np.nan)
+    X = X.fillna(0)
+    
+    # 3. Scaling Logic
+    os.makedirs("models", exist_ok=True)
+    
+    if is_training:
+        # We use RobustScaler to ignore outliers in network traffic
+        scaler = RobustScaler()
+        X_scaled = scaler.fit_transform(X)
+        joblib.dump(scaler, "models/scaler.pkl")
+        print("[*] Scaler fitted on training data and saved.")
+    else:
+        # Load the existing scaler for evaluation/UI
+        if not os.path.exists("models/scaler.pkl"):
+            raise FileNotFoundError("Scaler not found! Train the model first.")
+        scaler = joblib.load("models/scaler.pkl")
+        X_scaled = scaler.transform(X)
+        
+    return pd.DataFrame(X_scaled, columns=config.SELECTED_FEATURES)

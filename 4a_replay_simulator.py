@@ -1,78 +1,52 @@
 import pandas as pd
 import time
+import os
 import config
 
-# Note: Python import parser doesn't like files starting with numbers. 
-# We'll use importlib to safely import it.
-import importlib.util
-import sys
-
-# Safe import for files starting with a number
-spec = importlib.util.spec_from_file_location("live_detector", "3_run_live_detector.py")
-live_detector = importlib.util.module_from_spec(spec)
-sys.modules["live_detector"] = live_detector
-spec.loader.exec_module(live_detector)
-
-
-def run_replay(speed=1.0):
-    print("[*] Starting Dataset Replay Simulator...")
+def start_simulation(speed=1.0):
+    print("="*50)
+    print("🚀  NETWORK TRAFFIC SIMULATOR (CICIOT23 REPLAY)")
+    print("="*50)
     
-    detector = live_detector.EdgeDetector()
-    if detector.model is None:
+    if not os.path.exists(config.TEST_DATA_PATH):
+        print(f"[!] ERROR: Test file not found at {config.TEST_DATA_PATH}")
         return
 
+    # Load 500 rows from the test set for the demo
+    print(f"[*] Loading data from: {config.TEST_DATA_PATH}")
+    df = pd.read_csv(config.TEST_DATA_PATH, nrows=500)
+    
+    # Identify label column for the simulator's console output
+    label_col = next((c for c in df.columns if 'label' in c.lower()), None)
+
+    print(f"[*] Replaying {len(df)} packets...")
+    print(f"[*] Speed: {speed} seconds per packet.")
+    print("[*] Press Ctrl+C to stop simulation.")
+    print("-" * 50)
+
     try:
-        # For the replay, we'll read the raw dataset so we can see the "true" label
-        # and check if our AI guesses correctly.
-        df = pd.read_csv(config.RAW_DATA_PATH)
-        
-        print(f"[*] Replaying {len(df)} network flows...")
-        print("-" * 50)
-        
-        correct_flags = 0
-        missed_attacks = 0
-        false_alarms = 0
-        
-        for index, row in df.iterrows():
-            # Get the true label
-            true_label = row.get(config.LABEL_COLUMN, "Unknown")
-            is_true_attack = (true_label != config.NORMAL_LABEL)
+        for i in range(len(df)):
+            # 1. Grab one row (one "packet")
+            packet = df.iloc[[i]]
             
-            # Extract just the features for the detector
-            flow_features = {feature: row[feature] for feature in config.SELECTED_FEATURES if feature in row}
+            # 2. Write it to the shared 'live_stream.csv' file
+            # The detector (3_run_live_detector.py) is watching for this file!
+            packet.to_csv("live_stream.csv", index=False)
             
-            # Ask the AI
-            result = detector.inspect_flow(flow_features)
+            # 3. Print what we sent
+            true_label = packet[label_col].values[0] if label_col else "Unknown"
+            print(f"[{i+1}/500] 📡 Sent Packet | Original Label: {true_label}")
             
-            if not result:
-                continue
-                
-            # Formatting the output like a real IDS log
-            status_symbol = "[ALERT!]" if result["is_anomalous"] else "[ OK ]"
+            # 4. Wait based on speed
+            time.sleep(speed)
             
-            # Print the log (simulating real time)
-            print(f"{status_symbol} Score: {result['score']:.4f} | True Label: {true_label}")
-            
-            # Track metrics
-            if result["is_anomalous"] and is_true_attack:
-                correct_flags += 1
-            elif not result["is_anomalous"] and is_true_attack:
-                missed_attacks += 1
-            elif result["is_anomalous"] and not is_true_attack:
-                false_alarms += 1
-
-            # Sleep to simulate network delay
-            time.sleep(0.1 / speed)
-            
-        print("-" * 50)
-        print("[*] Replay Complete. Simulation Results:")
-        print(f"    Correctly Blocked Attacks: {correct_flags}")
-        print(f"    Missed Attacks (False Negatives): {missed_attacks}")
-        print(f"    False Alarms (False Positives): {false_alarms}")
-
-    except FileNotFoundError:
-         print(f"[!] Target dataset {config.RAW_DATA_PATH} not found. Generate dummy data with 1_prepare_data.py first.")
+    except KeyboardInterrupt:
+        print("\n[!] Simulation stopped by user.")
+    
+    # Clean up the stream file on exit
+    if os.path.exists("live_stream.csv"):
+        os.remove("live_stream.csv")
 
 if __name__ == "__main__":
-    # Run the replay at 5x speed
-    run_replay(speed=5.0)
+    # Change speed here (e.g., 0.5 for faster, 2.0 for slower)
+    start_simulation(speed=1.0)

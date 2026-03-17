@@ -1,36 +1,60 @@
+import torch
+import torch.nn as nn
 import pandas as pd
+import numpy as np
 import joblib
 import config
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 from dataset_adapter import preprocess_dataset
+from sklearn.metrics import classification_report, confusion_matrix
 
-def evaluate_model():
-    print(f"[*] Loading model and preparing for chunked evaluation...")
-    try:
-        model = joblib.load(config.MODEL_SAVE_PATH)
-    except:
-        print("[!] Model not found.")
-        return
+class IoTAutoencoder(nn.Module):
+    def __init__(self, input_dim):
+        super(IoTAutoencoder, self).__init__()
+        # NEW DEEPER ARCHITECTURE (Must match 2_train_model.py exactly)
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 12), nn.ReLU(),
+            nn.Linear(12, 6), nn.ReLU(),
+            nn.Linear(6, 3) 
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(3, 6), nn.ReLU(),
+            nn.Linear(6, 12), nn.ReLU(),
+            nn.Linear(12, input_dim)
+        )
+    def forward(self, x): return self.decoder(self.encoder(x))
 
-    all_preds = []
-    all_true = []
-    chunk_size = 100000 
+def evaluate_dl_model():
+    print("-" * 50)
+    print("[*] Evaluating Model on Test Set...")
+    
+    model = IoTAutoencoder(config.INPUT_DIM)
+    model.load_state_dict(torch.load(config.MODEL_SAVE_PATH))
+    model.eval()
+    threshold = joblib.load(config.THRESHOLD_PATH)
+    
+    all_preds, all_labels = [], []
 
-    # Process dataset in small chunks to prevent MemoryError
-    for chunk in pd.read_csv(config.TEST_DATA_PATH, chunksize=chunk_size):
-        X = preprocess_dataset(chunk)
-        raw_preds = model.predict(X)
+    for chunk in pd.read_csv(config.TEST_DATA_PATH, chunksize=100000):
+        # 1. Preprocess using the saved scaler (is_training=False)
+        X_scaled = preprocess_dataset(chunk, is_training=False)
+        X_tensor = torch.FloatTensor(X_scaled.values)
         
-        all_preds.extend([1 if p == -1 else 0 for p in raw_preds])
-        all_true.extend([1 if label != config.NORMAL_LABEL else 0 for label in chunk[config.LABEL_COLUMN]])
-        print(f"[*] Processed {len(all_preds)} rows...")
+        with torch.no_grad():
+            recons = model(X_tensor)
+            mse = torch.mean((recons - X_tensor)**2, dim=1).numpy()
+            preds = ["Attack" if e > threshold else "Normal" for e in mse]
+            
+        all_preds.extend(preds)
+        
+        # Standardize labels for the report
+        label_col = next((c for c in chunk.columns if 'label' in c.lower()), None)
+        labels = chunk[label_col].apply(lambda x: "Normal" if str(x).lower() in ['normal', 'benign', 'benigntraffic'] else "Attack")
+        all_labels.extend(labels.tolist())
 
-    print("\n===== Final Evaluation Results =====")
-    print(f"Accuracy: {accuracy_score(all_true, all_preds):.4f}")
-    print("\nConfusion Matrix:")
-    print(confusion_matrix(all_true, all_preds))
-    print("\nClassification Report:")
-    print(classification_report(all_true, all_preds, target_names=["Normal", "Attack"]))
+    print("\n" + "="*40 + "\n      FINAL DL PERFORMANCE\n" + "="*40)
+    print(f"Confusion Matrix:\n{confusion_matrix(all_labels, all_preds, labels=['Normal', 'Attack'])}")
+    print("-" * 40)
+    print(classification_report(all_labels, all_preds))
 
 if __name__ == "__main__":
-    evaluate_model()    
+    evaluate_dl_model() 

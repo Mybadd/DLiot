@@ -1,78 +1,72 @@
 import pandas as pd
+import numpy as np
 import time
+import os
 import config
 
-# Note: Python import parser doesn't like files starting with numbers. 
-# We'll use importlib to safely import it.
-import importlib.util
-import sys
+def generate_packet(attack_mode=False):
+    """Creates a synthetic IoT packet calibrated to CICIOT23 training data"""
+    if attack_mode:
+        # 🚨 ATTACK PROFILE (Aggressive: High rate, low IAT, TCP Flags)
+        packet = {
+            "flow_duration": np.random.uniform(0.001, 0.05),
+            "Header_Length": np.random.randint(1000, 5000),
+            "Rate": np.random.uniform(5000, 10000),
+            "Srate": np.random.uniform(5000, 10000),
+            "Drate": 0,
+            "IAT": np.random.uniform(0, 0.0001),
+            "Protocol Type": 6.0,   # TCP
+            "fin_flag_number": 0,
+            "syn_flag_number": 1    # SYN Flood
+        }
+    else:
+        # ✅ BENIGN PROFILE (Calibrated to look 'Normal' to the Autoencoder)
+        # We use Protocol 6 (TCP) and much lower rates to stay under the threshold.
+        packet = {
+            "flow_duration": np.random.uniform(0.1, 1.0),
+            "Header_Length": np.random.randint(50, 150),
+            "Rate": np.random.uniform(1, 10),
+            "Srate": np.random.uniform(1, 10),
+            "Drate": 0,
+            "IAT": np.random.uniform(0.05, 0.2),
+            "Protocol Type": 6.0,   # Matches the majority of BenignTraffic
+            "fin_flag_number": 0,
+            "syn_flag_number": 0
+        }
+    return pd.DataFrame([packet])
 
-# Safe import for files starting with a number
-spec = importlib.util.spec_from_file_location("live_detector", "3_run_live_detector.py")
-live_detector = importlib.util.module_from_spec(spec)
-sys.modules["live_detector"] = live_detector
-spec.loader.exec_module(live_detector)
-
-
-def run_replay(speed=1.0):
-    print("[*] Starting Dataset Replay Simulator...")
+def start_active_demo():
+    print("="*50)
+    print("🔥  ACTIVE ATTACK SIMULATOR (CALIBRATED)")
+    print("="*50)
+    print("[*] Options: [1] Normal Traffic  [2] Launch DDoS Attack  [Q] Quit")
     
-    detector = live_detector.EdgeDetector()
-    if detector.model is None:
-        return
-
     try:
-        # For the replay, we'll read the raw dataset so we can see the "true" label
-        # and check if our AI guesses correctly.
-        df = pd.read_csv(config.RAW_DATA_PATH)
-        
-        print(f"[*] Replaying {len(df)} network flows...")
-        print("-" * 50)
-        
-        correct_flags = 0
-        missed_attacks = 0
-        false_alarms = 0
-        
-        for index, row in df.iterrows():
-            # Get the true label
-            true_label = row.get(config.LABEL_COLUMN, "Unknown")
-            is_true_attack = (true_label != config.NORMAL_LABEL)
+        while True:
+            choice = input("\n[Demo Control] > ").lower()
             
-            # Extract just the features for the detector
-            flow_features = {feature: row[feature] for feature in config.SELECTED_FEATURES if feature in row}
-            
-            # Ask the AI
-            result = detector.inspect_flow(flow_features)
-            
-            if not result:
-                continue
+            if choice == '1':
+                print("[*] Generating Normal User Traffic...")
+                for _ in range(5):
+                    packet = generate_packet(attack_mode=False)
+                    packet.to_csv("live_stream.csv", index=False)
+                    time.sleep(1)
+                    
+            elif choice == '2':
+                print("🚨 LAUNCHING DDoS ATTACK BURST!")
+                for i in range(20):
+                    packet = generate_packet(attack_mode=True)
+                    packet.to_csv("live_stream.csv", index=False)
+                    print(f"  -> Flooding packet {i+1}...")
+                    time.sleep(0.1)
+                    
+            elif choice == 'q':
+                break
+            else:
+                print("[!] Invalid choice.")
                 
-            # Formatting the output like a real IDS log
-            status_symbol = "[ALERT!]" if result["is_anomalous"] else "[ OK ]"
-            
-            # Print the log (simulating real time)
-            print(f"{status_symbol} Score: {result['score']:.4f} | True Label: {true_label}")
-            
-            # Track metrics
-            if result["is_anomalous"] and is_true_attack:
-                correct_flags += 1
-            elif not result["is_anomalous"] and is_true_attack:
-                missed_attacks += 1
-            elif result["is_anomalous"] and not is_true_attack:
-                false_alarms += 1
-
-            # Sleep to simulate network delay
-            time.sleep(0.1 / speed)
-            
-        print("-" * 50)
-        print("[*] Replay Complete. Simulation Results:")
-        print(f"    Correctly Blocked Attacks: {correct_flags}")
-        print(f"    Missed Attacks (False Negatives): {missed_attacks}")
-        print(f"    False Alarms (False Positives): {false_alarms}")
-
-    except FileNotFoundError:
-         print(f"[!] Target dataset {config.RAW_DATA_PATH} not found. Generate dummy data with 1_prepare_data.py first.")
+    except KeyboardInterrupt:
+        print("\n[!] Simulator stopped.")
 
 if __name__ == "__main__":
-    # Run the replay at 5x speed
-    run_replay(speed=5.0)
+    start_active_demo()

@@ -1,72 +1,81 @@
+import torch
 import joblib
 import pandas as pd
-import numpy as np
 import config
+from dataset_adapter import preprocess_dataset
+import time
 import os
-import datetime
+import csv
 
-class EdgeDetector:
-    def __init__(self):
-        print(f"[*] Initializing Edge IDS Detector...")
-        self.model = None
-        self.load_model()
+# 1. Architecture (Synchronized with your 93% model)
+class IoTAutoencoder(torch.nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.encoder = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, 12), torch.nn.ReLU(),
+            torch.nn.Linear(12, 6), torch.nn.ReLU(),
+            torch.nn.Linear(6, 3) 
+        )
+        self.decoder = torch.nn.Sequential(
+            torch.nn.Linear(3, 6), torch.nn.ReLU(),
+            torch.nn.Linear(6, 12), torch.nn.ReLU(),
+            torch.nn.Linear(12, input_dim)
+        )
+    def forward(self, x): return self.decoder(self.encoder(x))
 
-    def load_model(self):
-        try:
-            if not os.path.exists(config.MODEL_SAVE_PATH):
-                print(f"[!] Error: Model file not found at {config.MODEL_SAVE_PATH}.")
-                print("[!] Please run 2_train_model.py first.")
-                return False
+def log_detection(mse, status):
+    """Saves attack data to a persistent CSV log"""
+    log_file = "detection_log.csv"
+    file_exists = os.path.isfile(log_file)
+    
+    with open(log_file, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['Timestamp', 'Anomaly_Score', 'Detection_Status'])
+        
+        writer.writerow([time.strftime('%Y-%m-%d %H:%M:%S'), f"{mse:.6f}", status])
+
+def run_detector():
+    print("="*50)
+    print("🛡️  IoT LIVE INTRUSION DETECTION SYSTEM ACTIVE")
+    print("="*50)
+
+    # Load Model & Threshold
+    model = IoTAutoencoder(config.INPUT_DIM)
+    model.load_state_dict(torch.load(config.MODEL_SAVE_PATH))
+    model.eval()
+    threshold = joblib.load(config.THRESHOLD_PATH)
+    
+    print(f"[*] Monitoring network... (Threshold: {threshold:.6f})")
+    print("[*] Logs will be saved to detection_log.csv")
+
+    try:
+        while True:
+            if os.path.exists("live_stream.csv"):
+                data = pd.read_csv("live_stream.csv").tail(1)
+                os.remove("live_stream.csv") 
                 
-            self.model = joblib.load(config.MODEL_SAVE_PATH)
-            print("[+] AI Model loaded successfully. Ready for inference.")
-            return True
-        except Exception as e:
-            print(f"[!] Error loading model: {e}")
-            return False
-
-    def inspect_flow(self, flow_data_dict):
-        """
-        Takes a single dictionary representing a network flow and returns an anomaly check.
-        """
-        if self.model is None:
-            return None
-
-        try:
-            # Convert the incoming dictionary into a format the AI understands (a single-row Pandas DataFrame)
-            # Ensure the order of features perfectly matches what was trained
-            df_flow = pd.DataFrame([flow_data_dict])
-            
-            # Predict
-            # .predict() returns 1 for normal, -1 for anomaly
-            # .decision_function() returns the actual anomaly score (lower negative is more anomalous)
-            prediction = self.model.predict(df_flow)[0]
-            score = self.model.decision_function(df_flow)[0]
-            
-            is_anomaly = True if prediction == -1 else False
-            
-            return {
-                "is_anomalous": is_anomaly,
-                "score": score
-            }
-
-        except Exception as e:
-            print(f"[!] Error inspecting flow: {e}")
-            return None
-        return {
-    "time": datetime.datetime.now(),
-    "is_anomalous": is_anomaly,
-    "score": score
-        }
+                # Predict
+                X_scaled = preprocess_dataset(data, is_training=False)
+                X_tensor = torch.FloatTensor(X_scaled.values)
+                
+                with torch.no_grad():
+                    recons = model(X_tensor)
+                    mse = torch.mean((recons - X_tensor)**2, dim=1).item()
+                
+                status = "🚨 ATTACK" if mse > threshold else "✅ Normal"
+                color = "\033[91m" if mse > threshold else "\033[92m"
+                
+                # Print to console
+                print(f"[{time.strftime('%H:%M:%S')}] Score: {mse:.4f} | Status: {color}{status}\033[0m")
+                
+                # Save only Attacks to the persistent log
+                if mse > threshold:
+                    log_detection(mse, "MALICIOUS_TRAFFIC_DETECTED")
+                
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n[*] Shutting down IDS...")
 
 if __name__ == "__main__":
-    print("[*] 3_run_live_detector.py is a module. Please use 4a_replay_simulator.py or 4b_active_simulator.py to test it.")
-    
-    # Quick sanity check
-    detector = EdgeDetector()
-    if detector.model:
-        # Create a perfectly normal looking fake packet
-        fake_flow = {col: 0.5 for col in config.SELECTED_FEATURES}
-        result = detector.inspect_flow(fake_flow)
-        print(f"[*] Sanity Check Result: {result}")
-    
+    run_detector()
