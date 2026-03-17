@@ -52,10 +52,6 @@ python 4a_replay_simulator.py  # To replay REAL dataset attacks
 
 OR
 python 4b_active_simulator.py  # To launch a MANUAL synthetic burst
-#### **1. Environment Setup**
-Ensure you have the required libraries installed:
-```bash
-pip install torch pandas numpy scikit-learn streamlit joblib
 
 📈 Key Technical Features
 Bottleneck Compression: By squeezing features into a 3-neuron latent space, we prevent the model from "memorizing" noise, forcing it to learn the true patterns of benign traffic.
@@ -63,3 +59,9 @@ Bottleneck Compression: By squeezing features into a 3-neuron latent space, we p
 Percentile-Based Calibration: The detection threshold is dynamically set at the 75th percentile of training error, optimizing the balance between False Positives and Security Recall.
 
 Forensic Logging: Every detected attack is timestamped and saved with its specific Anomaly Score for later security auditing.
+
+#### **1. Environment Setup**
+Ensure you have the required libraries installed:
+```bash
+pip install torch pandas numpy scikit-learn streamlit joblib
+
